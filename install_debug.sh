@@ -75,3 +75,4 @@ else
   echo "❌ OpenClaw is NOT responding even inside its own container"
   echo "   This means OpenClaw itself isn't starting properly or binding correctly"
 fi
+  
