@@ -1,119 +1,74 @@
-# OpenClaw aka (Clawdbot, MoltBot) (Coolify Edition)
+# OpenClaw Minimal
 
-**Your Assistant. Your Machine. Your Rules.**
+Lightweight OpenClaw deployment with security hardening.
 
-OpenClaw aka (Clawdbot, MoltBot) is an open agent platform that runs on your machine and works from the chat apps you already use. WhatsApp, Telegram, Discord, Slack, Teams—wherever you are, your AI assistant follows.
+## Features
 
-Unlike SaaS assistants where your data lives on someone else’s servers, OpenClaw runs where you choose—laptop, homelab, or VPS. Your infrastructure. Your keys. Your data.
+- Core OpenClaw chat interface
+- Token-based authentication
+- Docker socket proxy (security)
+- Multi-provider AI support (Anthropic, OpenAI, Gemini)
 
----
+## Requirements
 
-## 🚀 Easy Setup on Coolify
+- Coolify or Docker Compose
+- At least one AI provider API key
 
-1.  Open your Coolify Dashboard.
-2.  Navigate to **Project** > **New**.
-3.  Select **Public Repository**.
-4.  Enter the URL: `https://github.com/essamamdani/openclaw-coolify`
-5.  Click **Continue**.
+## Quick Start
 
----
+### 1. Set API Key
 
-## 📦 Post-Deployment (Ready)
-Once the container is running and healthy:
+In Coolify, add your API key to environment variables:
 
-1.  **Access the Dashboard**:
-    - Open the **Service Logs** in Coolify.
-    - Look for: `🦞 OPENCLAW READY`.
-    - You will see a **Dashboard URL** with a token (e.g., `https://.../?token=xyz`).
-    - **Click that link** to access your OpenClaw Gateway UI.
-2.  **Approve Your Device**:
-    - You will see an "Unauthorized" or pairing screen (this is normal).
-    - Open the **Service Terminal** in Coolify.
-    - Run: `openclaw-approve`
-    - > [!WARNING]
-    - > **Security Note**: `openclaw-approve` is a break-glass utility that auto-accepts ALL pending pairing requests. Only run this immediately after accessing the URL yourself. Do not leave it running or use it when you don't recognize a request.
-3.  **Guided Onboarding**: To configure your agent's personality and skills:
-    - In the terminal, run: `openclaw onboard`
-    - Follow the interactive wizard.
-4.  **Configure Channels**: Go to the **Channels** tab in the dashboard to link WhatsApp, Telegram, etc.
+```
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+```
 
----
+Or use `OPENAI_API_KEY` or `GEMINI_API_KEY`.
 
-## � Channel Setup
+### 2. Deploy
 
-OpenClaw lives where you work. You can connect it to WhatsApp, Telegram, Discord, etc.
+Coolify will automatically use `docker-compose.yaml`.
 
-### 📱 Telegram
-**Fastest setup.**
-1.  Talk to **@BotFather** on Telegram.
-2.  Create a new bot (`/newbot`) and get the **Token**.
-3.  Add `TELEGRAM_BOT_TOKEN` to your Coolify Environment Variables.
-4.  **Redeploy** (or just restart).
-5.  DM your new bot. It will ask for a **Pairing Code**.
-6.  Go to your OpenClaw Dashboard > **Pairing** to approve it.
-    *   *Docs: [Telegram Channel Guide](docs/channels/telegram.md)*
+Build time: ~5-10 minutes.
 
-### 🟢 WhatsApp
-**Requires scanning a QR code.**
-1.  Go to your OpenClaw Dashboard (from the logs).
-2.  Navigate to **Channels** > **WhatsApp**.
-3.  Open WhatsApp on your phone > **Linked Devices** > **Link a Device**.
-4.  Scan the QR code shown on the dashboard.
-5.  **Done!** You can now chat with OpenClaw.
-    *   *Docs: [WhatsApp Channel Guide](docs/channels/whatsapp.md)*
+### 3. Access UI
 
-### ⚡ Other Channels
-You can verify status or manage other channels (Discord, Slack) via the dashboard or CLI.
-*   *CLI Docs: [Channel Management](docs/cli/channels.md)*
+Check deployment logs for:
 
----
+```
+🦞 OpenClaw is ready!
 
-## � Architecture: The AI Office
+🔑 Access Token: abc123...
+☁️  Public: https://your-domain.com?token=abc123...
+```
 
-Think of this Docker container not as an app, but as an **Office Building**.
+Click the URL to access the web interface.
 
-### 1. The Staff (Multi-Agent System)
-*   **The Manager (Gateway)**: The main `openclaw` process. It hires "staff" to do work.
-*   **The Workers (Sandboxes)**: When you ask for a complex coding task, the Manager spins up **isolated Docker containers** (sub-agents).
-    *   They have their own Linux tools (Python, Node, Go).
-    *   They work safely in a sandbox, then report back.
-    *   *Managed via: Docker Socket Proxy (Secure Sidecar).*
+## Troubleshooting
 
-### 2. Corporate Memory (Long-Term Storage)
-Your office never forgets, thanks to a 3-tier memory architecture:
-*   **The Filing Cabinet (`openclaw-workspace`)**: A persistent Docker Volume where agents write code, save files, and store heavy data. Survives restarts.
-*   **The Brain (Internal SQLite)**: OpenClaw's native transactional memory for conversations and facts.
-*   **Web Search (SearXNG)**: A private, tracking-free search engine (`searxng:8080`) for the agent's research.
+Run diagnostics inside the container:
 
-### 3. The Security Vault
-Your agent can securely manage credentials without leaking them:
-*   **Bitwarden (`rbw`)**: Securely fetch secrets from your Bitwarden vault.
-*   **Pass**: Local GPG-encrypted password storage for the agent's exclusive use.
+```bash
+bash /app/scripts/diagnose.sh
+```
 
-### 4. The Public Front Door (Cloudflare Tunnel)
-Need to show a client your work?
-*   The agent can start a web server (e.g., Next.js on port 3000).
-*   It uses `cloudflared` to instantly create a **secure public URL** (e.g., `https://project-viz.trycloudflare.com`).
-*   *No router port forwarding required.*
+Common issues:
 
-### 5. Advanced Web Utilities
-*   **Universal Scraper**: 5-stage fallback engine (Curl -> AI Browser -> Anti-Detect) to read any website.
-*   **Research Tools**: `hackernews-cli`, `tuir` (Reddit), `newsboat` (RSS), `sonos` control.
+- **Build fails**: Check Docker has internet access
+- **Can't access UI**: Verify port 18789 is exposed
+- **Token not working**: Check logs for current token
+- **AI not responding**: Verify API key in Coolify env vars
 
-### 6. Zero-Config & Production Ready
-*   **Pre-installed Tools**: `gh` (GitHub), `vercel`, `bun`, `python`, `ripgrep`.
-*   **Office Suite**: `pandoc` (Docs), `marp` (Slides), `csvkit` (Excel), `qmd` (Local AI Search).
-*   **Secure**: All sub-agents are firewalled.
-*   **Self-Healing**: Docker volumes ensure `openclaw-config` and `openclaw-workspace` persist forever.
+## Data Persistence
 
----
+Docker volumes preserve your data across redeployments:
 
+- `openclaw-config` - Settings and token
+- `openclaw-workspace` - Chat history
 
-## 🔒 Security & Sandboxing
+## Security
 
-- **Authentication**: Dashboard is token-protected. New chat users must be "paired" (approved) first.
-- **Docker Proxy**: This setup uses a **Sockety Proxy (Sidecar)** pattern.
-    - OpenClaw talks to a restricted Docker API proxy (`tcp://docker-proxy:2375`).
-    - **Blocked**: Swarm, Secrets, System, Volumes, and other critical host functions.
-    - **Allowed**: Only what's needed for sandboxing (Containers, Images, Networks).
-- **Isolation**: Sub-agents run in disposable containers. `SOUL.md` rules forbid the agent from touching your other Coolify services.
+- Docker socket access via proxy (limited API permissions)
+- Token-based UI authentication (randomly generated)
+- HTTPS via Caddy (Coolify managed)

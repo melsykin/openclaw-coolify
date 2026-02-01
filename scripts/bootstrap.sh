@@ -5,8 +5,7 @@ OPENCLAW_STATE="/root/.openclaw"
 CONFIG_FILE="$OPENCLAW_STATE/openclaw.json"
 WORKSPACE_DIR="/root/openclaw-workspace"
 
-
-
+# Create directories
 mkdir -p "$OPENCLAW_STATE" "$WORKSPACE_DIR"
 chmod 700 "$OPENCLAW_STATE"
 
@@ -14,57 +13,28 @@ mkdir -p "$OPENCLAW_STATE/credentials"
 mkdir -p "$OPENCLAW_STATE/agents/main/sessions"
 chmod 700 "$OPENCLAW_STATE/credentials"
 
-# ----------------------------
-# Seed Agent Workspaces
-# ----------------------------
-seed_agent() {
-  local id="$1"
-  local name="$2"
-  local dir="/root/openclaw-$id"
-
-  if [ "$id" = "main" ]; then
-    dir="/root/openclaw-workspace"
-  fi
-
-  mkdir -p "$dir"
-
-  # 🔒 NEVER overwrite existing SOUL.md
-  if [ -f "$dir/SOUL.md" ]; then
-    echo "🧠 SOUL.md already exists for $id — skipping"
-    return 0
-  fi
-
-  # ✅ MAIN agent gets ORIGINAL repo SOUL.md and BOOTSTRAP.md
-  if [ "$id" = "main" ]; then
-    if [ -f "./SOUL.md" ] && [ ! -f "$dir/SOUL.md" ]; then
-      echo "✨ Copying original SOUL.md to $dir"
-      cp "./SOUL.md" "$dir/SOUL.md"
+# Seed workspace
+if [ ! -f "$WORKSPACE_DIR/SOUL.md" ]; then
+    if [ -f "./SOUL.md" ]; then
+        echo "✨ Copying SOUL.md to workspace"
+        cp "./SOUL.md" "$WORKSPACE_DIR/SOUL.md"
     fi
-    if [ -f "./BOOTSTRAP.md" ] && [ ! -f "$dir/BOOTSTRAP.md" ]; then
-      echo "🚀 Seeding BOOTSTRAP.md to $dir"
-      cp "./BOOTSTRAP.md" "$dir/BOOTSTRAP.md"
+fi
+
+if [ ! -f "$WORKSPACE_DIR/BOOTSTRAP.md" ]; then
+    if [ -f "./BOOTSTRAP.md" ]; then
+        echo "🚀 Copying BOOTSTRAP.md to workspace"
+        cp "./BOOTSTRAP.md" "$WORKSPACE_DIR/BOOTSTRAP.md"
     fi
-    return 0
-  fi
+fi
 
-  # fallback for other agents
-  cat >"$dir/SOUL.md" <<EOF
-# SOUL.md - $name
-You are OpenClaw, a helpful and premium AI assistant.
-EOF
-}
-
-seed_agent "main" "OpenClaw"
-
-# ----------------------------
-# Generate Config with Prime Directive
-# ----------------------------
+# Generate config
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "🏥 Generating openclaw.json with Prime Directive..."
-  TOKEN=$(openssl rand -hex 24 2>/dev/null || node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")
-  cat >"$CONFIG_FILE" <<EOF
+    echo "🏥 Generating openclaw.json..."
+    TOKEN=$(openssl rand -hex 24)
+    cat >"$CONFIG_FILE" <<EOF
 {
-"commands": {
+  "commands": {
     "native": true,
     "nativeSkills": true,
     "text": true,
@@ -74,99 +44,50 @@ if [ ! -f "$CONFIG_FILE" ]; then
     "restart": true,
     "useAccessGroups": true
   },
-  "skills": {
-    "allowBundled": [
-      "*"
-    ],
-    "install": {
-      "nodeManager": "npm"
-    }
-  },
   "gateway": {
-  "port": $OPENCLAW_GATEWAY_PORT,
-  "mode": "local",
+    "port": ${OPENCLAW_GATEWAY_PORT:-18789},
+    "mode": "local",
     "bind": "lan",
     "controlUi": {
       "enabled": true,
       "allowInsecureAuth": false
     },
-    "trustedProxies": [
-      "*"
-    ],
-    "tailscale": {
-      "mode": "off",
-      "resetOnExit": false
-    },
-    "auth": { "mode": "token", "token": "$TOKEN" }
+    "trustedProxies": ["*"],
+    "auth": {
+      "mode": "token",
+      "token": "$TOKEN"
+    }
   },
   "agents": {
     "defaults": {
       "workspace": "$WORKSPACE_DIR",
-      "envelopeTimestamp": "on",
-      "envelopeElapsed": "on",
-      "cliBackends": {},
-      "heartbeat": {
-        "every": "1h"
-      },
-      "maxConcurrent": 4,
-      "sandbox": {
-        "mode": "non-main",
-        "scope": "session",
-        "browser": {
-          "enabled": true
-        }
-      }
+      "maxConcurrent": 2
     },
     "list": [
-      { "id": "main","default": true, "name": "default",  "workspace": "/root/openclaw-workspace"}
+      {
+        "id": "main",
+        "default": true,
+        "name": "default",
+        "workspace": "/root/openclaw-workspace"
+      }
     ]
   }
 }
 EOF
 fi
 
-# ----------------------------
 # Export state
-# ----------------------------
 export OPENCLAW_STATE_DIR="$OPENCLAW_STATE"
 
-# ----------------------------
-# Sandbox setup
-# ----------------------------
-[ -f scripts/sandbox-setup.sh ] && bash scripts/sandbox-setup.sh
-[ -f scripts/sandbox-browser-setup.sh ] && bash scripts/sandbox-browser-setup.sh
-
-# ----------------------------
-# Recovery & Monitoring
-# ----------------------------
-if [ -f scripts/recover_sandbox.sh ]; then
-  echo "🛡️  Deploying Recovery Protocols..."
-  cp scripts/recover_sandbox.sh "$WORKSPACE_DIR/"
-  cp scripts/monitor_sandbox.sh "$WORKSPACE_DIR/"
-  chmod +x "$WORKSPACE_DIR/recover_sandbox.sh" "$WORKSPACE_DIR/monitor_sandbox.sh"
-  
-  # Run initial recovery
-  bash "$WORKSPACE_DIR/recover_sandbox.sh"
-  
-  # Start background monitor
-  nohup bash "$WORKSPACE_DIR/monitor_sandbox.sh" >/dev/null 2>&1 &
-fi
-
-# ----------------------------
-# Run OpenClaw
-# ----------------------------
-ulimit -n 65535
-# ----------------------------
-# Banner & Access Info
-# ----------------------------
-# Try to extract existing token if not already set (e.g. from previous run)
+# Extract token
 if [ -f "$CONFIG_FILE" ]; then
-    SAVED_TOKEN=$(grep -o '"token": "[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
-    if [ -n "$SAVED_TOKEN" ]; then
-        TOKEN="$SAVED_TOKEN"
-    fi
+    TOKEN=$(grep -o '"token": "[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
 fi
 
+# Set ulimit
+ulimit -n 65535
+
+# Display access info
 echo ""
 echo "=================================================================="
 echo "🦞 OpenClaw is ready!"
@@ -174,19 +95,12 @@ echo "=================================================================="
 echo ""
 echo "🔑 Access Token: $TOKEN"
 echo ""
-echo "🌍 Service URL (Local): http://localhost:${OPENCLAW_GATEWAY_PORT:-18789}?token=$TOKEN"
+echo "🌍 Local: http://localhost:${OPENCLAW_GATEWAY_PORT:-18789}?token=$TOKEN"
 if [ -n "$SERVICE_FQDN_OPENCLAW" ]; then
-    echo "☁️  Service URL (Public): https://${SERVICE_FQDN_OPENCLAW}?token=$TOKEN"
-    echo "    (Wait for cloud tunnel to propagate if just started)"
+    echo "☁️  Public: https://${SERVICE_FQDN_OPENCLAW}?token=$TOKEN"
 fi
 echo ""
-echo "👉 Onboarding:"
-echo "   1. Access the UI using the link above."
-echo "   2. To approve this machine, run inside the container:"
-echo "      openclaw-approve"
-echo "   3. To start the onboarding wizard:"
-echo "      openclaw onboard"
-echo ""
 echo "=================================================================="
-echo "🔧 Current ulimit is: $(ulimit -n)"
+
+# Start OpenClaw
 exec openclaw gateway run

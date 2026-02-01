@@ -211,7 +211,4 @@ if ! pgrep -f "openclaw" >/dev/null; then
 fi
 
 echo ""
-echo "For detailed troubleshooting, see: TROUBLESHOOTING.md"
-echo "Or run: cat /app/TROUBLESHOOTING.md"
-echo ""
 echo "=================================================="
