@@ -16,8 +16,22 @@ services:
       nofile:
         soft: 65535
         hard: 65535
+    ports:
+      - "18789:18789"
     env_file:
       - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openclaw.rule=Host(`${SERVICE_FQDN_OPENCLAW}`)"
+      - "traefik.http.routers.openclaw.entrypoints=https"
+      - "traefik.http.routers.openclaw.tls=true"
+      - "traefik.http.routers.openclaw.tls.certresolver=letsencrypt"
+      - "traefik.http.services.openclaw.loadbalancer.server.port=18789"
+      - "traefik.http.routers.openclaw-http.rule=Host(`${SERVICE_FQDN_OPENCLAW}`)"
+      - "traefik.http.routers.openclaw-http.entrypoints=http"
+      - "traefik.http.middlewares.openclaw-ws.headers.customrequestheaders.Connection=Upgrade"
+      - "traefik.http.middlewares.openclaw-ws.headers.customrequestheaders.Upgrade=websocket"
+      - "traefik.http.routers.openclaw.middlewares=openclaw-ws"
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
       OPENCLAW_ENABLE_WEBHOOK_PROXY: "1"
@@ -56,8 +70,6 @@ services:
       NANOBANANA_API_KEY: ${NANOBANANA_API_KEY}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
 
-      SERVICE_URL_OPENCLAW_18789: null
-      SERVICE_URL_OPENCLAWWEBHOOK_8788: null
       BASE_URL: 'https://${SERVICE_FQDN_OPENCLAW}'
       PUBLIC_URL: 'https://${SERVICE_FQDN_OPENCLAW}'
       # Bootstrap controls
@@ -89,7 +101,15 @@ services:
 
     depends_on:
       - docker-proxy
-
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/__openclaw__/canvas/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - coolify
+      - default
     command: ["bash", "/app/scripts/bootstrap.sh"]
 
   docker-proxy:
@@ -169,6 +189,12 @@ services:
       - SETGID
       - SETUID
 
+
+networks:
+  coolify:
+    external: true
+  default:
+    driver: bridge
 
 volumes:
   openclaw-config:

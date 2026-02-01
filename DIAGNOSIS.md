@@ -1,243 +1,217 @@
-# Your OpenClaw Deployment - Likely Issues
+# OpenClaw 502 Bad Gateway - Root Cause & Fix
 
-## Critical Finding: Missing API Keys
+## The Problem
 
-I checked your `.env` file and found **no AI provider API keys configured**. This is the most likely reason your deployment isn't working.
-
-### ❌ What's Missing
-Your `.env` file only contains Supabase keys (which are not used by OpenClaw). You need at least ONE of these:
-
-```bash
-OPENAI_API_KEY=sk-proj-...
-ANTHROPIC_API_KEY=sk-ant-...
-GEMINI_API_KEY=AIza...
-MINIMAX_API_KEY=...
+Your logs show OpenClaw is running perfectly:
+```
+🦞 OpenClaw is ready!
+🔑 Access Token: 73c0d388bdc621834ccbdd8687b184370422a1412d7010d6
+[gateway] listening on ws://0.0.0.0:18789
 ```
 
-## How to Fix This
+But you get **502 Bad Gateway** when accessing `https://test.mysticservices.win?token=...`
 
-### In Coolify:
+## Root Cause
 
-1. **Go to your OpenClaw service**
-2. Click **Environment Variables**
-3. **Add one of these:**
+The original `docker-compose.yaml` was missing:
+1. **Port exposure** - The `ports:` section wasn't defined, so Coolify's proxy couldn't reach the container
+2. **Network configuration** - The container wasn't on Coolify's proxy network
+3. **Service labels** - No Traefik labels to tell Coolify how to route traffic
 
-   | Provider | Variable Name | Get Key From |
-   |----------|--------------|--------------|
-   | OpenAI | `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
-   | Claude | `ANTHROPIC_API_KEY` | https://console.anthropic.com/account/keys |
-   | Gemini | `GEMINI_API_KEY` | https://aistudio.google.com/app/apikey |
-   | MiniMax | `MINIMAX_API_KEY` | https://platform.minimaxi.com |
+## What I Fixed
 
-4. **Click Save**
-5. **Redeploy** the service (Coolify will rebuild with the new environment variable)
-
-### Example (Adding OpenAI):
-```
-Variable Name: OPENAI_API_KEY
-Value: sk-proj-abc123xyz...
+### 1. Added Port Exposure
+```yaml
+ports:
+  - "18789:18789"
 ```
 
-## Other Common Issues
-
-### 1. Domain Configuration (If API keys are already set)
-
-**Symptom:** Container runs but you can't access it
-
-**Check in Coolify:**
-- Go to your service → **Domains**
-- Make sure you have a domain configured (e.g., `openclaw.yourdomain.com`)
-- Verify your DNS A record points to your Coolify server IP
-
-**Quick DNS Test:**
-```bash
-# On your local machine:
-nslookup openclaw.yourdomain.com
-
-# Should return your Coolify server IP
+### 2. Added Traefik Labels for Coolify
+```yaml
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.openclaw.rule=Host(`${SERVICE_FQDN_OPENCLAW}`)"
+  - "traefik.http.services.openclaw.loadbalancer.server.port=18789"
+  # Plus WebSocket support headers
 ```
 
-**Common DNS Mistakes:**
-- Using Cloudflare with proxy enabled (orange cloud) - **Set to "DNS Only"** (gray cloud)
-- Wrong IP address in A record
-- Forgot to add A record entirely
-
-### 2. Insufficient Resources (Hostinger VPS)
-
-**Symptom:** Build fails or container crashes
-
-**Check your Hostinger plan:**
-- Need minimum: **2GB RAM**, **2 CPU cores**
-- Recommended: **4GB RAM**, **4 CPU cores**
-
-**How to check (in Coolify terminal):**
-```bash
-free -h  # Check RAM
-df -h    # Check disk space
+### 3. Added Coolify Network
+```yaml
+networks:
+  - coolify
+  - default
 ```
 
-### 3. Build Failures
-
-**Symptom:** Deployment fails during build phase
-
-**Common causes:**
-- npm registry timeout (temporary)
-- Insufficient disk space
-- Out of memory during build
-
-**Solution:**
-1. Check build logs for specific error
-2. Try deploying again (npm can be unreliable)
-3. If OOM (Out of Memory), upgrade your VPS plan
-
-### 4. Docker Socket Access
-
-**Symptom:** Container starts but can't create sandboxes
-
-**This is usually handled automatically** by the `docker-proxy` service, but check:
-
-In Coolify logs, verify you see:
-```
-docker-proxy | ... [info] Accepting connections
+### 4. Added Health Check
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:18789/__openclaw__/canvas/"]
+  interval: 30s
+  start_period: 60s
 ```
 
-## Step-by-Step Diagnosis
+### 5. Removed Conflicting Settings
+Removed `SERVICE_URL_OPENCLAW_18789: null` which was disabling Coolify's auto URL generation.
 
-Run these commands in your **Coolify Service Terminal**:
+## How to Deploy the Fixed Version
 
-### 1. Check if OpenClaw is installed:
-```bash
-which openclaw
-openclaw --version
-```
+### Option 1: Push Changes to Your Fork
 
-Expected output:
-```
-/usr/local/bin/openclaw
-openclaw version X.Y.Z
-```
+1. Commit these changes to your forked repository
+2. In Coolify, delete the old OpenClaw service
+3. Redeploy from your updated repository
+4. Wait for build to complete
+5. Access via your domain
 
-### 2. Run the diagnostic script:
-```bash
-chmod +x /app/scripts/diagnose.sh
-/app/scripts/diagnose.sh
-```
+### Option 2: Redeploy with Updated Settings
 
-This will check:
-- ✅ OpenClaw installation
-- ✅ API keys (most likely your issue!)
-- ✅ Docker access
-- ✅ Configuration
-- ✅ System resources
+If you don't want to update the repo:
 
-### 3. Check the logs:
-```bash
-# Look for the "ready" message:
-tail -50 /var/log/* | grep -i "openclaw is ready"
+1. In Coolify, go to your OpenClaw service
+2. Go to **Advanced** → **Docker Compose**
+3. You may be able to edit the docker-compose directly there
+4. Add the port and network configuration
+5. Redeploy
 
-# Or check recent errors:
-tail -100 /var/log/* | grep -i error
-```
+### Option 3: Manual Coolify Configuration
 
-### 4. Try manual start (for debugging):
-```bash
-openclaw gateway run
-```
+If the labels don't work (Coolify versions vary):
 
-Watch for errors. Common error if API keys are missing:
-```
-Error: No model provider configured
-```
+1. In Coolify → Your Service → **Domains**
+2. Make sure the domain is configured: `test.mysticservices.win`
+3. Go to **Advanced** settings
+4. Look for "Container Port" or "Internal Port" - set it to `18789`
+5. Look for "Service" or "Container" - select `openclaw`
+6. Save and redeploy
 
-## Most Likely Root Causes (In Order)
+## Alternative: Cloudflare Tunnel (Bypass Coolify Proxy)
 
-### 1. 🔴 No API Keys (90% probability)
-**Evidence:** Your `.env` file has no AI provider keys
-**Fix:** Add at least one API key in Coolify environment variables
+If domain routing continues to fail, use Cloudflare Tunnel instead:
 
-### 2. 🟡 Domain Not Configured (5% probability)
-**Evidence:** Would need to check your Coolify domain settings
-**Fix:** Configure domain in Coolify or access via IP
-
-### 3. 🟡 Build Failed (3% probability)
-**Evidence:** Would show in build logs
-**Fix:** Check build logs for npm/Docker errors
-
-### 4. 🟢 Docker Socket Issues (1% probability)
-**Evidence:** docker-proxy not running
-**Fix:** Redeploy entire service
-
-### 5. 🟢 Insufficient Resources (1% probability)
-**Evidence:** OOM killer in system logs
-**Fix:** Upgrade VPS plan
-
-## Recommended Action Plan
-
-### Step 1: Add API Keys (DO THIS FIRST)
-1. Choose a provider (OpenAI is easiest to get started)
-2. Get an API key
-3. Add to Coolify environment variables
+1. Create a Cloudflare Tunnel: https://dash.cloudflare.com → Zero Trust → Access → Tunnels
+2. Get your tunnel token
+3. In Coolify, add environment variable: `CF_TUNNEL_TOKEN=your-token`
 4. Redeploy
+5. The bootstrap script will automatically set up the tunnel
+6. Access via the Cloudflare-provided URL
 
-### Step 2: Watch the Deployment
-1. Monitor **Build Logs**
-2. Look for: "✅ openclaw binary found"
-3. Then monitor **Service Logs**
-4. Look for: "🦞 OpenClaw is ready!"
+This bypasses Coolify's reverse proxy entirely and gives you a secure public URL.
 
-### Step 3: First Access
-1. Copy the URL with token from logs
-2. Open in browser (you'll see "Unauthorized")
-3. Run `openclaw-approve` in Coolify terminal
-4. Refresh browser
+## Verifying the Fix
 
-### Step 4: If Still Not Working
-1. Run `/app/scripts/diagnose.sh` in terminal
-2. Check the output for specific failures
-3. Read the detailed TROUBLESHOOTING.md guide
-4. Gather logs and specific error messages
+After redeploying with the fixed config:
 
-## Quick Reference Files
+### Check 1: Container is on Coolify Network
+```bash
+# In Coolify terminal:
+docker network inspect coolify | grep -A5 openclaw
+```
 
-I've created several helpful files for you:
+### Check 2: Port is Exposed
+```bash
+docker ps | grep openclaw
+# Should show "0.0.0.0:18789->18789/tcp"
+```
 
-- **QUICK_START.md** - Step-by-step deployment guide
-- **TROUBLESHOOTING.md** - Detailed troubleshooting for common issues
-- **scripts/diagnose.sh** - Automated diagnostic script
-- **DIAGNOSIS.md** (this file) - Summary of likely issues
+### Check 3: Health Check Passing
+```bash
+curl -f http://localhost:18789/__openclaw__/canvas/
+# Should return HTML (the canvas UI)
+```
 
-## Need More Help?
+### Check 4: Logs Show Readiness
+```bash
+# Look for:
+[gateway] listening on ws://0.0.0.0:18789
+```
 
-If after adding API keys and following the steps above it still doesn't work, please provide:
+## If It's Still 502
 
-1. **Output of diagnostic script:**
-   ```bash
-   /app/scripts/diagnose.sh > /tmp/diagnosis.txt
-   cat /tmp/diagnosis.txt
-   ```
+If you still get 502 after deploying the fixed version:
 
-2. **Last 100 lines of logs:**
-   ```bash
-   # In Coolify: Service → Logs → Copy last 100 lines
-   ```
+### 1. Check Coolify's Reverse Proxy
 
-3. **Build logs** (if build failed)
+Coolify uses either Traefik or Caddy. Check which one:
+```bash
+docker ps | grep -E "traefik|caddy"
+```
 
-4. **Your setup:**
-   - Hostinger VPS specs (RAM/CPU)
-   - Domain configuration
-   - Which API key you added
+Check proxy logs for errors:
+```bash
+docker logs <traefik-container-name> 2>&1 | tail -50
+# or
+docker logs <caddy-container-name> 2>&1 | tail -50
+```
 
----
+### 2. Check Network Name
 
-## TL;DR - Fastest Path to Working OpenClaw
+The fix assumes Coolify's network is called `coolify`. It might be different:
+```bash
+docker network ls | grep -i coolify
+```
 
-1. **Get an API key** (OpenAI: https://platform.openai.com/api-keys)
-2. **Add to Coolify:** Environment Variables → `OPENAI_API_KEY` → `sk-proj-YOUR-KEY`
-3. **Redeploy** (click Deploy button)
-4. **Wait 10 minutes** for build to complete
-5. **Check logs** for "🦞 OpenClaw is ready!" and copy the URL
-6. **Access URL** → Run `openclaw-approve` in terminal → Refresh browser
-7. **Done!** You should see the OpenClaw dashboard
+If it's named differently (e.g., `coolify-infra`), update docker-compose.yaml:
+```yaml
+networks:
+  coolify-infra:  # Use actual network name
+    external: true
+```
 
-**Time from start to working:** 15-20 minutes (assuming you have API key ready)
+### 3. Try Without External Network
+
+If the `coolify` network doesn't exist, the deployment will fail. Try removing the network section:
+
+Edit docker-compose.yaml and remove:
+```yaml
+networks:
+  coolify:
+    external: true
+```
+
+And from the openclaw service, remove:
+```yaml
+    networks:
+      - coolify
+      - default
+```
+
+Then redeploy and configure routing in Coolify's UI instead.
+
+### 4. Check Your Hostinger Setup
+
+You mentioned trying multiple methods. There might be residual configuration:
+
+```bash
+# Check for conflicting Caddy configs
+cat /etc/caddy/Caddyfile 2>/dev/null
+
+# Check for conflicting Nginx configs
+ls /etc/nginx/sites-enabled/ 2>/dev/null
+
+# Check what's listening on port 443/80
+ss -tlnp | grep -E ':80|:443'
+```
+
+If there's a manual Caddy/Nginx config from your previous attempts, it might be conflicting with Coolify's proxy.
+
+## Summary of Changes
+
+| File | Change | Purpose |
+|------|--------|---------|
+| docker-compose.yaml | Added `ports: - "18789:18789"` | Expose port to Coolify |
+| docker-compose.yaml | Added Traefik labels | Route traffic correctly |
+| docker-compose.yaml | Added `networks: coolify` | Join Coolify's proxy network |
+| docker-compose.yaml | Added healthcheck | Let Coolify know when ready |
+| docker-compose.yaml | Removed `SERVICE_URL_*: null` | Enable Coolify auto-routing |
+| coolify.json | Updated version, added proxyService | Tell Coolify which service to proxy |
+
+## Next Steps
+
+1. **Push the changes** to your GitHub fork
+2. **Delete** the existing Coolify service (clean slate)
+3. **Redeploy** from your updated repository
+4. **Check logs** for "OpenClaw is ready"
+5. **Access** `https://test.mysticservices.win?token=YOUR_TOKEN`
+6. **If it works**: Run `openclaw-approve` in terminal, then refresh
+
+If still failing, try the Cloudflare Tunnel option as a reliable alternative.
