@@ -22,7 +22,10 @@ services:
       - .env
     labels:
       - "coolify.managed=true"
-      - "coolify.service=openclaw"
+      - "caddy=${SERVICE_FQDN_OPENCLAW}"
+      - "caddy.reverse_proxy={{upstreams 18789}}"
+      - "caddy.header.Connection=Upgrade"
+      - "caddy.header.Upgrade=websocket"
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
       OPENCLAW_ENABLE_WEBHOOK_PROXY: "1"
@@ -37,9 +40,9 @@ services:
       HISTSAVE: 50000
       HISTCONTROL: ignoreboth
 
-      
+
       # Map OpenClaw vars
-      OPENCLAW_GATEWAY_BIND: lan
+      OPENCLAW_GATEWAY_BIND: "0.0.0.0"
       OPENCLAW_GATEWAY_PORT: ${OPENCLAW_GATEWAY_PORT:-18789}
       # Tell the binary where to look for state/config
       OPENCLAW_STATE_DIR: /root/.openclaw
@@ -98,9 +101,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    networks:
-      - coolify
-      - default
     command: ["bash", "/app/scripts/bootstrap.sh"]
 
   docker-proxy:
@@ -179,13 +179,6 @@ services:
       - CHOWN
       - SETGID
       - SETUID
-
-
-networks:
-  coolify:
-    external: true
-  default:
-    driver: bridge
 
 volumes:
   openclaw-config:
