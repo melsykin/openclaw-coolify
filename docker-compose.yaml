@@ -101,6 +101,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    networks:
+      - coolify
+      - default
     command: ["bash", "/app/scripts/bootstrap.sh"]
 
   docker-proxy:
@@ -189,3 +192,9 @@ volumes:
 #  qdrant-data:
 #  linkding-data:
 #  miniflux-db:
+
+networks:
+  coolify:
+    external: true
+  default:
+    driver: bridge
