@@ -10,16 +10,12 @@ services:
       nofile:
         soft: 65535
         hard: 65535
-    ports:
-      - "18789:18789"
+    expose:
+      - "18789"
     env_file:
       - .env
     labels:
       - "coolify.managed=true"
-      - "caddy=${SERVICE_FQDN_OPENCLAW}"
-      - "caddy.reverse_proxy={{upstreams 18789}}"
-      - "caddy.header.Connection=Upgrade"
-      - "caddy.header.Upgrade=websocket"
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
       PORT: 18789
